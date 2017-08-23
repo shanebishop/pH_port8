@@ -180,15 +180,9 @@ typedef struct pH_locality {
 } pH_locality;
 
 // My own structs
-typedef struct my_syscall {
-	struct my_syscall* next;
-	unsigned long syscall_num;
-} my_syscall;
-
 typedef struct pH_task_struct { // My own version of a pH_task_state
 	struct pH_task_struct* next; // For linked lists
 	struct pH_task_struct* prev;
-	my_syscall* syscall_llist;
 	long process_id;
 	pH_locality alf;
 	pH_seq* seq;
@@ -643,9 +637,8 @@ inline void pH_train(pH_task_struct*);
 
 // Processes a system call
 int process_syscall(long syscall) {
-	pH_task_struct* process;
-	my_syscall* new_syscall;
-	pH_profile* profile;
+	pH_task_struct* process = NULL;
+	pH_profile* profile = NULL;
 	int ret = -1;
 	
 	// Boolean checks
@@ -720,6 +713,7 @@ int process_syscall(long syscall) {
 	
 	if (profile->lock == NULL) {
 		pr_err("%s: ERROR: Somehow the profile->lock was NULL anyway\n", DEVICE_NAME);
+		ret = -1;
 		goto exit;
 	}
 	
@@ -778,16 +772,6 @@ int process_syscall(long syscall) {
 		goto exit;
 	}
 	//pr_err("%s: Trained process\n", DEVICE_NAME);
-	
-	// Allocate space for new_syscall
-	new_syscall = kmalloc(sizeof(my_syscall), GFP_ATOMIC);
-	if (!new_syscall) {
-		pr_err("%s: Unable to allocate space for new_syscall\n", DEVICE_NAME);
-		kfree(process->seq);
-		ret = -ENOMEM;
-		goto exit;
-	}
-	//pr_err("%s: Successfully allocated space for new_syscall\n", DEVICE_NAME);
 
 	//pr_err("%s: Finished processing syscall %ld\n", DEVICE_NAME, syscall);	
 	ret = 0;
@@ -862,7 +846,7 @@ static long jsys_execve(const char __user *filename,
 	int current_process_id;
 	int list_length;
 	pH_task_struct* process = NULL;
-	pH_profile* profile;
+	pH_profile* profile = NULL;
 	bool already_had_process = FALSE;
 
 	// Boolean checks
@@ -951,7 +935,6 @@ static long jsys_execve(const char __user *filename,
 	//pH_reset_ALF(this_process);
 	process->seq = NULL;
 	//spin_lock_init(&(this_process->pH_seq_stack_sem));
-	process->syscall_llist = NULL;
 	process->delay = 0;
 	process->count = 0;
 	//pr_err("%s: Initialized process\n", DEVICE_NAME);
@@ -996,6 +979,7 @@ static long jsys_execve(const char __user *filename,
 	}
 	*/
 	
+	// Yes, the boolean check is quite necessary
 	if (profile != NULL) {
 		process->profile = profile;
 		pH_refcount_inc(profile);
@@ -1064,7 +1048,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	pH_task_struct* process = NULL;
 	pH_profile* profile = NULL;
 	task_struct_wrapper* to_add = NULL;
-	char* temp_string = NULL;
+	const char* temp_string = NULL;
 	
 	if (!module_inserted_successfully) return 0;
 	
@@ -1835,11 +1819,11 @@ static int dev_open(struct inode *inodep, struct file *filep) {
 }
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
-	return -EBUSY;
+	return 0;
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
-	return -EBUSY;
+	return 0;
 }
 
 static int dev_release(struct inode *inodep, struct file *filep) {
