@@ -24,6 +24,7 @@ error message (code should ONLY stop running on ASSERT or rmmod)
 #include <linux/vmalloc.h>   // For vmalloc
 
 #include "system_call_prototypes.h"
+#include "ebbcharmutex.h"
 
 #define  DEVICE_NAME "ebbchar"
 #define  CLASS_NAME  "ebb"
@@ -75,9 +76,6 @@ MODULE_LICENSE("GPL"); // Don't ever forget this line!
 }
 
 // My definitions
-#define TRUE  (1 == 1)
-#define FALSE !TRUE
-
 #define ASSERT(x)                                                       \
 do {    if (x) break;                                                   \
         printk(KERN_EMERG "### ASSERTION FAILED %s: %s: %d: %s\n",      \
@@ -85,15 +83,8 @@ do {    if (x) break;                                                   \
 } while (0)
 
 static int    majorNumber;
-//static char   message[256] = {0};
-//static short  size_of_message;
-//static int    numberOpens = 0;
-static struct class*  ebbcharClass  = NULL;
-static struct device* ebbcharDevice = NULL;
 
 const char *PH_FILE_MAGIC = "pH profile 0.18\n";
-
-static DEFINE_MUTEX(ebbchar_mutex);
 
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
@@ -280,6 +271,16 @@ int pH_normal_wait = 7 * 24 * 3600;/* seconds before putting normal to work */
 #define SIGNAL_PRIVILEGE (1)
 pH_task_struct* pH_task_struct_list = NULL; // List of processes currently being monitored
 struct jprobe jprobes_array[num_syscalls];  // Array of jprobes (is this obsolete?)
+long userspace_pid;                         // The PID of the userspace process
+const char TRANSFER_OPERATION[2] = {'t', '\0'};
+const char STOP_TRANSFER_OPERATION[3] = {'s', 't', '\0'};
+const char READ_PROFILE_FROM_DISK[3] = {'r', 'b', '\0'};
+char* output_string;                        // The string that will be sent to userspace
+void* bin_receive_ptr;                      // The pointer for binary writes
+bool done_waiting_for_user        = FALSE;
+bool have_userspace_pid           = FALSE;
+bool binary_read                  = FALSE;
+bool user_process_has_been_loaded = FALSE;
 bool module_inserted_successfully = FALSE;
 spinlock_t pH_profile_list_sem;             // Lock for list of profiles
 spinlock_t pH_task_struct_list_sem;         // Lock for process list
@@ -1770,19 +1771,45 @@ static void __exit ebbchar_exit(void){
 	pr_err("%s: %s successfully removed\n", DEVICE_NAME, DEVICE_NAME);
 }
 
-static int dev_open(struct inode *inodep, struct file *filep){
+static int dev_open(struct inode *inodep, struct file *filep) {
+	if (!mutex_trylock(&ebbchar_mutex)) {
+		pr_err("%s: Device in use by another process\n", DEVICE_NAME);
+		return -EBUSY;
+	}
+	
+	output_string = kmalloc(sizeof(char) * 254, GFP_ATOMIC);
+	if (!output_string) {
+		pr_err("%s: Unable to allocate memory for output_string", DEVICE_NAME);
+		return -EFAULT;
+	}
+	
+	bin_receive_ptr = vmalloc(sizeof(pH_disk_profile));
+	if (!bin_receive_ptr) {
+		pr_err("%s: Unable to allocate memory for bin_receive_ptr", DEVICE_NAME);
+		return -EFAULT;
+	}
+	
+	numberOpens++;
+	pr_err("%s: Device has been opened %d time(s)\n", DEVICE_NAME, numberOpens);
 	return 0;
 }
 
-static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-	return 0;
+static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
+	return -EBUSY;
 }
 
-static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-	return 0;
+static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
+	return -EBUSY;
 }
 
-static int dev_release(struct inode *inodep, struct file *filep){
+static int dev_release(struct inode *inodep, struct file *filep) {
+	module_inserted_successfully = FALSE;
+	pH_aremonitoring             = 0;
+	done_waiting_for_user        = FALSE;
+	have_userspace_pid           = FALSE;
+	binary_read                  = FALSE;
+	user_process_has_been_loaded = FALSE;
+	
 	return 0;
 }
 
