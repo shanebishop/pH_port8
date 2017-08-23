@@ -594,8 +594,8 @@ pH_task_struct* llist_retrieve_process(int process_id) {
 
 // Initializes a new pH_seq and then adds it to the stack of pH_seqs
 int make_and_push_new_pH_seq(pH_task_struct* process) {
-	pH_profile* profile;
-	pH_seq* new_sequence;
+	pH_profile* profile = NULL;
+	pH_seq* new_sequence = NULL;
 	
 	ASSERT(process != NULL);
 	
@@ -838,7 +838,6 @@ void add_process_to_llist(pH_task_struct* t) {
 	//pr_err("%s: In add_process_to_llist\n", DEVICE_NAME);
 
 	ASSERT(spin_is_locked(&pH_task_struct_list_sem));
-	
 	ASSERT(t != NULL);
 	
 	if (pH_task_struct_list == NULL) {
@@ -855,7 +854,7 @@ void add_process_to_llist(pH_task_struct* t) {
 }
 
 // Returns a pH_profile, given a filename
-pH_profile* retrieve_pH_profile_by_filename(char* filename) {
+pH_profile* retrieve_pH_profile_by_filename(const char* filename) {
 	ASSERT(spin_is_locked(&pH_profile_list_sem));
 	
 	pH_task_struct* process_list_iterator;
@@ -1402,7 +1401,7 @@ int remove_process_from_llist(pH_task_struct* process) {
 
 // Destructor for pH_task_structs
 void free_pH_task_struct(pH_task_struct* process) {
-	pH_profile* profile;
+	pH_profile* profile = NULL;
 	int i = 0;
 	int ret;
 	
@@ -1473,7 +1472,7 @@ void free_pH_task_struct(pH_task_struct* process) {
 }
 
 noinline static long jsys_exit(int error_code) {
-	pH_task_struct* process;
+	pH_task_struct* process = NULL;
 	
 	if (!module_inserted_successfully) goto not_inserted;
 	
@@ -1514,9 +1513,9 @@ struct jprobe sys_exit_jprobe = {
 };
 
 noinline static long jdo_group_exit(int error_code) {
-	pH_task_struct* process;
-	struct task_struct* p;
-	struct task_struct* t;
+	pH_task_struct* process = NULL;
+	struct task_struct* p = NULL;
+	struct task_struct* t = NULL;
 	
 	if (!module_inserted_successfully) goto not_inserted;
 	
@@ -1575,7 +1574,7 @@ struct jprobe do_group_exit_jprobe = {
 };
 
 noinline static void jfree_pid(struct pid* pid) {
-	pH_task_struct* iterator;
+	pH_task_struct* iterator = NULL;
 	int i = 0;
 	bool freed_anything = FALSE;
 	
@@ -1646,7 +1645,7 @@ struct jprobe free_pid_jprobe = {
 // This is for when a process receives a signal, NOT for when it resumes execution following
 // the signal. I will need to implement a second jprobe handler for resuming execution.
 noinline static void jhandle_signal(struct ksignal* ksig, struct pt_regs* regs) {
-	pH_task_struct* process;
+	pH_task_struct* process = NULL;
 	
 	if (!module_inserted_successfully) goto not_inserted;
 	
