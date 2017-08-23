@@ -628,12 +628,60 @@ int make_and_push_new_pH_seq(pH_task_struct* process) {
 	return 0;
 }
 
-void free_pH_task_struct(pH_task_struct*);
+// Retruns the task_struct of the userspace app
+struct task_struct* get_userspace_task_struct(void) {
+	ASSERT(have_userspace_pid);
+	
+	return pid_task(find_pid_ns(userspace_pid, &init_pid_ns), PIDTYPE_PID);
+}
 
-// Function prototypes for process_syscall()
+int send_signal_to_userspace(int signal_to_send) {
+	int ret;
+	struct task_struct* t;
+	
+	t = get_userspace_task_struct();
+	if (!t) {
+		pr_err("%s: No such PID", DEVICE_NAME);
+		return -ESRCH;
+	}
+	
+	ret = send_sig(signal_to_send, t, SIGNAL_PRIVILEGE);
+	if (ret < 0) {
+		pr_err("%s: Unable to send signal\n", DEVICE_NAME);
+		return ret;
+	}
+	
+	/*
+	// Switch statement to help with printing out signal sent to userspace
+	char signal_sent[8];
+	switch (signal_to_send) {
+		case SIGSTOP:
+			strlcpy(signal_sent, "SIGSTOP", 7);
+			break;
+		case SIGCONT:
+			strlcpy(signal_sent, "SIGCONT", 7);
+			break;
+		case SIGTERM:
+			strlcpy(signal_sent, "SIGTERM", 7);
+			break;
+		case SIGKILL:
+			strlcpy(signal_sent, "SIGKILL", 7);
+			break;
+		default:
+			pr_err("%s: %d signal sent to user space process", DEVICE_NAME, signal_to_send);
+			return 0;
+	}
+
+	//pr_err("%s: %s signal sent to user space process", DEVICE_NAME, signal_sent);
+	*/
+	return 0;
+}
+
+// Function prototypes for process_syscall
 inline void pH_append_call(pH_seq*, int);
 inline void pH_train(pH_task_struct*);
 //void stack_print(pH_task_struct*);
+void free_pH_task_struct(pH_task_struct*);
 
 // Processes a system call
 int process_syscall(long syscall) {
@@ -1827,8 +1875,56 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 	return bytes_not_copied;
 }
 
-static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
+static ssize_t dev_write(struct file *filep, const char *buf, size_t len, loff_t *offset) {
+	char* buffer = NULL;
+	int ret;
+	
+	user_process_has_been_loaded = TRUE;
+	binary_read = FALSE;
+	
+	if (numberOpens <= 0) return -EFAULT;
+	
+	buffer = kmalloc(sizeof(char) * 254, GFP_ATOMIC);
+	if (!buffer) {
+		pr_err("%s: Unable to allocate memory for dev_write buffer", DEVICE_NAME);
+		return len;
+	}
+	
+	copy_from_user(buffer, buf, sizeof(char) * 254); // Perhaps I should check how much got across?
+	//pr_err("%s: Did some setup\n", DEVICE_NAME);
+	
+	// If we failed to receive a message, kill the userspace app and return -1
+	if (buffer == NULL || strlen(buffer) < 1) {
+        pr_err("%s: Failed to read the message from userspace.%d%d\n", DEVICE_NAME, buffer == NULL, strlen(buffer) < 1);
+        
+        if (send_signal_to_userspace(SIGTERM) < 0) send_signal_to_userspace(SIGKILL);
+        
+        pr_err("%s: Userspace process killed\n", DEVICE_NAME);
+        
+        return -1;
+    }
+    
+    //pr_err("%s: Received message [%s] from userspace app\n", DEVICE_NAME, buffer);
+	
+	// If you do not have the userspace pid, then you must be getting it right now
+	if (!have_userspace_pid) {
+		// Convert the string buffer to a long and store it in userspace_pid
+		kstrtol(buffer, 10, &userspace_pid);
+		have_userspace_pid = TRUE;
+		//pr_err("%s: Received %ld PID from userspace\n", DEVICE_NAME, userspace_pid);
+	}
+	
+	// Start of temp code for early exit -----------------------
+	
+	// Send SIGSTOP signal to the userspace app
+	ret = send_signal_to_userspace(SIGSTOP);
+	if (ret < 0) return ret;
+
+	// We are done waiting for the user now
+	done_waiting_for_user = TRUE;
 	return 0;
+	
+	// End of temp code for early exit -------------------------
 }
 
 static int dev_release(struct inode *inodep, struct file *filep) {
