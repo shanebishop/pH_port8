@@ -1819,7 +1819,12 @@ static int dev_open(struct inode *inodep, struct file *filep) {
 }
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset) {
-	return 0;
+	int bytes_not_copied;
+	
+	bytes_not_copied = copy_to_user(buffer, "ignore", 7);
+	if (bytes_not_copied > 0) return -EFAULT;
+	
+	return bytes_not_copied;
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset) {
