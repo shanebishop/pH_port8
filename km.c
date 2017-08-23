@@ -197,6 +197,7 @@ typedef struct pH_task_struct { // My own version of a pH_task_state
 	pH_profile* profile; // Pointer to appropriate profile
 	struct task_struct* task_struct; // Pointer to corresponding task_struct
 	struct pid* pid; // Pointer to corresponding struct pid
+	spinlock_t lock;
 } pH_task_struct;
 
 typedef struct read_filename {
@@ -674,11 +675,17 @@ int process_syscall(long syscall) {
 	//pr_err("%s: Retrieved process successfully\n", DEVICE_NAME);
 	//pr_err("\n\n\n\n\n\n\n\%s: No really, the process was retrieved successfully\n*****************\n*****************\n*****************\n", DEVICE_NAME);
 	
+	if (spin_is_locked(&(process->lock))) {
+		spin_lock(&(process->lock));
+		spin_unlock(&(process->lock));
+	}
+	
 	profile = process->profile; // Store process->profile in profile for shorter reference
 	//pr_err("%s: Looked at the profile\n", DEVICE_NAME);
 	
 	if (!profile || profile == NULL) {
 		pr_err("%s: pH_task_struct corrupted: No profile\n", DEVICE_NAME);
+		ASSERT(profile != NULL);
 		ret = 1;
 		goto exit_before_profile;
 	}
@@ -891,6 +898,7 @@ static long jsys_execve(const char __user *filename,
 		//pr_err("%s: Successfully allocated memory for process\n", DEVICE_NAME);
 		
 		// Initialization for entirely new process - this might not be quite correct
+		spin_lock_init(&(process->lock));
 		process->process_id = current_process_id;
 		process->task_struct = current;
 		process->pid = task_pid(current);
@@ -1053,9 +1061,11 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	int ret = -1;
 	int process_id;
 	int temp;
-	pH_task_struct* process;
-	pH_profile* profile;
-	task_struct_wrapper* to_add;
+	pH_task_struct* process = NULL;
+	pH_profile* profile = NULL;
+	task_struct_wrapper* to_add = NULL;
+	
+	if (!module_inserted_successfully) return 0;
 	
 	pr_err("%s: In sys_execve_return_handler\n", DEVICE_NAME);
 	
@@ -1065,6 +1075,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (ret < 0) {
 		pr_err("%s: Failed to send SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
 		pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
+		return ret;
 	}
 	pr_err("%s: Sent SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
 	
@@ -1133,6 +1144,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 		pH_refcount_inc(process->profile);
 	}
 	
+	spin_unlock(&(process->lock));
 	process_syscall(59);
 
 	peek_task_struct_queue();
@@ -1145,6 +1157,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (ret < 0) {
 		pr_err("%s: Failed to send SIGCONT signal to %d\n", DEVICE_NAME, process_id);
 		pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
+		return ret;
 	}
 	pr_err("%s: Sent SIGCONT signal to %d\n", DEVICE_NAME, process_id);
 	
@@ -1156,10 +1169,13 @@ only_continue_process:
 	if (temp < 0) {
 		pr_err("%s: Failed to send SIGCONT signal to %d\n", DEVICE_NAME, process_id);
 		pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
+		if (process != NULL) spin_unlock(&(process->lock));
+		return ret;
 	}
 	pr_err("%s: Sent SIGCONT signal to %d\n", DEVICE_NAME, process_id);
 	
 	pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
+	if (process != NULL) spin_unlock(&(process->lock));
 	return ret;
 }
 
@@ -1350,12 +1366,23 @@ int remove_process_from_llist(pH_task_struct* process) {
 void free_pH_task_struct(pH_task_struct* process) {
 	pH_profile* profile;
 	int i = 0;
+	int ret;
 	
 	ASSERT(process != NULL);
 
 	pr_err("%s: In free_pH_task_struct for %ld %s\n", DEVICE_NAME, process->process_id, process->profile->filename);
 	//pr_err("%s: process = %p\n", DEVICE_NAME, process);
 	//pr_err("%s: process->seq = %p\n", DEVICE_NAME, process->seq); // This will only print NULL if this process did not make a single syscall
+	
+	// Remove from the linked list right away, and check return value
+	spin_lock(&pH_task_struct_list_sem);
+	ret = remove_process_from_llist(process);
+	spin_unlock(&pH_task_struct_list_sem);
+	
+	if (ret != 0) {
+		pr_err("%s: remove_process_from_llist failed with %d\n", DEVICE_NAME, ret);
+		return;
+	}
 	
 	if (pH_aremonitoring) {
 		//stack_print(process);
@@ -1401,13 +1428,7 @@ void free_pH_task_struct(pH_task_struct* process) {
 	//}
 	*/
 	
-	// When everything else is done, remove process from llist, kfree process
-	// (maybe remove the process from the llist earlier?)
-	//preempt_disable();
-	spin_lock(&pH_task_struct_list_sem);
-	remove_process_from_llist(process);
-	spin_unlock(&pH_task_struct_list_sem);
-	//preempt_enable();
+	// When everything else is done, kfree process
 	kfree(process);
 	process = NULL; // Okay because process is removed from llist above
 	pr_err("%s: Freed process (end of function)\n", DEVICE_NAME);
