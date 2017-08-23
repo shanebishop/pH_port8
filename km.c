@@ -484,7 +484,7 @@ inline struct task_struct* peek_task_struct_queue(void) {
 
 // Makes a new pH_profile and stores it in profile
 // profile must be allocated before this function is called
-int new_profile(pH_profile* profile, char* filename, bool make_temp_profile) {
+int new_profile(pH_profile* profile, const char* filename, bool make_temp_profile) {
 	int i;
 
 	ASSERT(profile != NULL);
@@ -530,7 +530,13 @@ int new_profile(pH_profile* profile, char* filename, bool make_temp_profile) {
 
 	profile->next = NULL;
 	pH_refcount_init(profile, 0);
-	profile->filename = filename;
+	
+	profile->filename = kmalloc(strlen(filename)+1, GFP_ATOMIC);
+	if (profile->filename == NULL) {
+		pr_err("%s: Unable to allocate memory for profile->filename in new_profile\n", DEVICE_NAME);
+		return -ENOMEM;
+	}
+	strlcpy(profile->filename, filename, strlen(filename)+1);
 	//pr_err("%s: Got here 4 (new_profile)\n", DEVICE_NAME);
 
 	//pH_open_seq_logfile(profile);
@@ -549,6 +555,8 @@ int new_profile(pH_profile* profile, char* filename, bool make_temp_profile) {
 		//pr_err("%s: Unlocking profile list in new_profile on line 462\n", DEVICE_NAME);
 		//pr_err("%s: Got here 5 (new_profile) returning...\n", DEVICE_NAME);
 	}
+	
+	//pr_err("%s: Made new profile with filename [%s]\n", DEVICE_NAME, filename);
 
 	return 0;
 }
@@ -1047,7 +1055,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	int temp;
 	pH_task_struct* process;
 	pH_profile* profile;
-	char* temp_string = "test";
 	task_struct_wrapper* to_add;
 	
 	pr_err("%s: In sys_execve_return_handler\n", DEVICE_NAME);
@@ -1073,9 +1080,11 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	add_to_task_struct_queue(to_add);
 	spin_unlock(&task_struct_queue_lock);
 	
+	/*
 	spin_lock(&read_filename_queue_lock);
 	remove_from_read_filename_queue();
 	spin_unlock(&read_filename_queue_lock);
+	*/
 	
 	spin_lock(&pH_task_struct_list_sem);
 	process = llist_retrieve_process(process_id);
@@ -1103,8 +1112,12 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 			goto only_continue_process;
 		}
 		
-		new_profile(profile, temp_string, TRUE);
-		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, temp_string);
+		new_profile(profile, peek_read_filename_queue(), TRUE);
+		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, peek_read_filename_queue());
+		
+		spin_lock(&read_filename_queue_lock);
+		remove_from_read_filename_queue();
+		spin_unlock(&read_filename_queue_lock);
 		
 		if (!profile || profile == NULL) {
 			pr_err("%s: new_profile() made a corrupted or NULL profile\n", DEVICE_NAME);
