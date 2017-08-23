@@ -1064,6 +1064,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	pH_task_struct* process = NULL;
 	pH_profile* profile = NULL;
 	task_struct_wrapper* to_add = NULL;
+	char* temp_string = NULL;
 	
 	if (!module_inserted_successfully) return 0;
 	
@@ -1123,8 +1124,13 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 			goto only_continue_process;
 		}
 		
-		new_profile(profile, peek_read_filename_queue(), TRUE);
-		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, peek_read_filename_queue());
+		spin_lock(&read_filename_queue_lock);
+		temp_string = peek_read_filename_queue();
+		spin_unlock(&read_filename_queue_lock);
+		
+		new_profile(profile, temp_string, TRUE);
+		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, temp_string);
+		temp_string = NULL;
 		
 		spin_lock(&read_filename_queue_lock);
 		remove_from_read_filename_queue();
