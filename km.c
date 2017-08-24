@@ -1312,7 +1312,7 @@ void pH_free_profile_storage(pH_profile *profile)
     ASSERT(profile != NULL);
     ASSERT(!pH_profile_in_use(profile));
 
-	//pr_err("%s: In pH_free_profile_storage for %d\n", DEVICE_NAME, profile->identifier);
+	pr_err("%s: In pH_free_profile_storage for %d\n", DEVICE_NAME, profile->identifier);
 
 	// Free profile->filename
     kfree(profile->filename);
@@ -1331,7 +1331,7 @@ void pH_free_profile_storage(pH_profile *profile)
         }
     }
     
-    //pr_err("%s: Exiting pH_free_profile_storage\n", DEVICE_NAME);
+    pr_err("%s: Exiting pH_free_profile_storage\n", DEVICE_NAME);
 }
 
 // Returns 0 on success and anything else on failure
@@ -2167,13 +2167,12 @@ inline void pH_train(pH_task_struct *s)
 
 void pH_profile_data_mem2disk(pH_profile_data *mem, pH_disk_profile_data *disk)
 {
-    //int i, j;
+    int i, j;
 
     disk->sequences = mem->sequences;
     disk->last_mod_count = mem->last_mod_count;
     disk->train_count = mem->train_count;
-
-	/*
+	
     for (i = 0; i < PH_NUM_SYSCALLS; i++) {
             if (mem->entry[i] == NULL) {
                     disk->empty[i] = 1;
@@ -2182,10 +2181,10 @@ void pH_profile_data_mem2disk(pH_profile_data *mem, pH_disk_profile_data *disk)
                     }
             } else {
                     disk->empty[i] = 0;
-                    //memcpy(disk->entry[i], mem->entry[i], PH_NUM_SYSCALLS);
+                    memcpy(disk->entry[i], mem->entry[i], PH_NUM_SYSCALLS);
             }
     }
-    */
+    
 }
 
 // I will eventually want to uncomment the commented lines below and run them without
@@ -2212,8 +2211,8 @@ void pH_profile_mem2disk(pH_profile *profile, pH_disk_profile *disk_profile)
     ASSERT(strcmp(disk_profile->filename, profile->filename) == 0);
     pr_err("%s: Successfully copied profile->filename\n", DEVICE_NAME);
 
-    //pH_profile_data_mem2disk(&(profile->train), &(disk_profile->train));
-    //pH_profile_data_mem2disk(&(profile->test), &(disk_profile->test));
+    pH_profile_data_mem2disk(&(profile->train), &(disk_profile->train));
+    pH_profile_data_mem2disk(&(profile->test), &(disk_profile->test));
 }
 
 int pH_profile_data_disk2mem(pH_disk_profile_data *disk, pH_profile_data *mem)
