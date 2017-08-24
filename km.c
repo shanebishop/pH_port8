@@ -528,10 +528,10 @@ int pH_write_profile(pH_profile* profile) {
 	ASSERT(profile->anomalies == temp_profile->anomalies);
 	ASSERT(profile->filename != NULL);
 	ASSERT(profile->filename[0] != '\0');
-	ASSERT(strlen(profile->filename) > 1);
 	pr_err("%s: Printing the filenames:\n", DEVICE_NAME);
 	pr_err("%s: Original profile's filename is [%s]\n", DEVICE_NAME, profile->filename);
 	pr_err("%s: New profile's filename is [%s]\n", DEVICE_NAME, temp_profile->filename);
+	ASSERT(strlen(profile->filename) > 1);
 	ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
 	
 	pr_err("%s: Calling pH_free_profile in pH_write_profile...\n", DEVICE_NAME);
