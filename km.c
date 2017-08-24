@@ -1369,32 +1369,28 @@ void pH_free_profile(pH_profile *profile)
     
     //pr_err("%s: In pH_free_profile for %d\n", DEVICE_NAME, profile->identifier);
     
-    //spin_lock(&(profile->freeing_lock));
-    
-    if (profile->lock == NULL) {
-    	return;
-    }
-    
-    // Deals with nasty locking stuff
-    spin_lock(profile->lock);
-    if (profile == NULL || !pH_profile_in_use(profile)) {
-    	spin_unlock(profile->lock);
-    	return;
-    }
-    /*
-    if (spin_trylock(&pH_profile_list_sem) == 0) {
-    	if (profile->lock == NULL) {
-			return;
-		}
-    	spin_unlock(profile->lock);
-    	spin_lock(&pH_profile_list_sem);
-    	spin_lock(profile->lock);
-    	if (profile == NULL || !pH_profile_in_use(profile)) {
+    if (profile->lock != NULL) {
+		// Deals with nasty locking stuff
+		spin_lock(profile->lock);
+		if (profile == NULL || !pH_profile_in_use(profile)) {
 			spin_unlock(profile->lock);
 			return;
 		}
-    }
-    */
+		/*
+		if (spin_trylock(&pH_profile_list_sem) == 0) {
+			if (profile->lock == NULL) {
+				return;
+			}
+			spin_unlock(profile->lock);
+			spin_lock(&pH_profile_list_sem);
+			spin_lock(profile->lock);
+			if (profile == NULL || !pH_profile_in_use(profile)) {
+				spin_unlock(profile->lock);
+				return;
+			}
+		}
+		*/
+	}
     
     ret = pH_remove_profile_from_list(profile);
     //spin_unlock(&pH_profile_list_sem);
