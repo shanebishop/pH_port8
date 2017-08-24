@@ -493,6 +493,7 @@ int pH_write_profile(pH_profile* profile) {
 		return -ENOMEM;
 	}
 	temp_profile->lock = NULL;
+	temp_profile->is_temp_profile = TRUE;
 	
 	disk_profile = __vmalloc(sizeof(pH_disk_profile), GFP_ATOMIC, PAGE_KERNEL);
 	if (!disk_profile) {
@@ -1362,7 +1363,7 @@ int pH_remove_profile_from_list(pH_profile *profile)
 // Destructor for pH_profiles - perhaps remove use of freeing lock?
 void pH_free_profile(pH_profile *profile)
 {
-    int ret;
+    int ret = 0;
     
     ASSERT(profile != NULL);
 	ASSERT(!pH_profile_in_use(profile));
@@ -1373,29 +1374,32 @@ void pH_free_profile(pH_profile *profile)
 		// Deals with nasty locking stuff
 		spin_lock(profile->lock);
 		if (profile == NULL || !pH_profile_in_use(profile)) {
-			spin_unlock(profile->lock);
+			if (profile != NULL) spin_unlock(profile->lock);
 			return;
 		}
-		/*
-		if (spin_trylock(&pH_profile_list_sem) == 0) {
-			if (profile->lock == NULL) {
-				return;
-			}
-			spin_unlock(profile->lock);
-			spin_lock(&pH_profile_list_sem);
-			spin_lock(profile->lock);
-			if (profile == NULL || !pH_profile_in_use(profile)) {
-				spin_unlock(profile->lock);
-				return;
+		if (!profile->is_temp_profile) {
+			if (spin_trylock(&pH_profile_list_sem) == 0) {
+				if (profile->lock != NULL) {
+					spin_unlock(profile->lock);
+					spin_lock(&pH_profile_list_sem);
+					spin_lock(profile->lock);
+					if (profile == NULL || !pH_profile_in_use(profile)) {
+						if (profile != NULL) spin_unlock(profile->lock);
+						return;
+					}
+				}
 			}
 		}
-		*/
+	} else if (!profile->is_temp_profile) {
+		spin_lock(&pH_profile_list_sem);
 	}
     
-    ret = pH_remove_profile_from_list(profile);
-    //spin_unlock(&pH_profile_list_sem);
+    if (!profile->is_temp_profile) {
+		ret = pH_remove_profile_from_list(profile);
+		spin_unlock(&pH_profile_list_sem);
+	}
     
-    ASSERT(ret != 0);
+    ASSERT(ret == 0);
 
     if (pH_aremonitoring) {
         //pH_write_profile(profile);
