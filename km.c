@@ -1108,11 +1108,6 @@ static long jsys_execve(const char __user *filename,
 	//pr_err("%s: Unlocking profile list in jsys_execve on line 1072\n", DEVICE_NAME);
 	//pr_err("%s: Profile found: %s\n", DEVICE_NAME, profile != NULL ? "yes" : "no");
 	
-	pr_err("%s: Calling add_to_read_filename_queue from jsys_execve...\n", DEVICE_NAME);
-	spin_lock(&read_filename_queue_lock);
-	add_to_read_filename_queue(path_to_binary);
-	spin_unlock(&read_filename_queue_lock);
-	
 	/*
 	// If there is no corresponding profile, make a new one - this should actually start a read
 	// request, once I have got to implementing that
@@ -1326,6 +1321,16 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 		process->profile = profile;
 		pH_refcount_inc(process->profile);
 	}
+	
+	spin_lock(&read_filename_queue_lock);
+	add_to_read_filename_queue(process->filename);
+	ASSERT(strcmp(process->filename, peek_read_filename_queue()) == 0);
+	remove_from_read_filename_queue();
+	ASSERT(read_filename_queue_front == NULL);
+	ASSERT(read_filename_queue_front->next == NULL);
+	ASSERT(read_filename_queue_rear == NULL);
+	ASSERT(read_filename_queue_rear->next == NULL);
+	spin_unlock(&read_filename_queue_lock);
 	
 	spin_unlock(&(process->lock));
 	process_syscall(59);
