@@ -79,13 +79,10 @@ do {    if (x) break;                                                   \
                __FILE__, __func__, __LINE__, #x); dump_stack(); BUG();  \
 } while (0)
 
-static int    majorNumber;
-//static char	message[256] = {0};
-//static short	size_of_message;
+static int  majorNumber;
 static int	numberOpens = 0;
 static struct class*	ebbcharClass = NULL;
 static struct device*	ebbcharDevice = NULL;
-//char*         test_string = "If this string is returned, that is awesome!!!";
 
 const char *PH_FILE_MAGIC = "pH profile 0.18\n";
 
@@ -253,7 +250,7 @@ int pH_default_looklen = 9;
 struct file *pH_logfile = NULL;
 int pH_delay_factor = 0;
 unsigned int pH_normal_factor = 128;
-#define pH_normal_factor_den 32        /* a define to make the asm better */
+#define pH_normal_factor_den (32)        /* a define to make the asm better */
 int pH_aremonitoring = 0;
 int pH_monitorSignal = 0;
 int pH_mod_min = 500;
@@ -270,7 +267,7 @@ int pH_normal_wait = 7 * 24 * 3600;/* seconds before putting normal to work */
 // My global variables
 #define SIGNAL_PRIVILEGE (1)
 pH_task_struct* pH_task_struct_list = NULL; // List of processes currently being monitored
-struct jprobe jprobes_array[num_syscalls];  // Array of jprobes (is this obsolete?)
+struct jprobe jprobes_array[num_syscalls];  // Array of jprobes (this is not obsolete)
 long userspace_pid;                         // The PID of the userspace process
 const char TRANSFER_OPERATION[2] = {'t', '\0'};
 const char STOP_TRANSFER_OPERATION[3] = {'s', 't', '\0'};
@@ -284,7 +281,8 @@ bool user_process_has_been_loaded = FALSE;
 bool module_inserted_successfully = FALSE;
 spinlock_t pH_profile_list_sem;             // Lock for list of profiles
 spinlock_t pH_task_struct_list_sem;         // Lock for process list
-int profiles_created = 0;                   // Number of profiles that have been created
+long profiles_created = 0;                  // Number of profiles that have been created
+spinlock_t profiles_created_lock;
 int successful_jsys_execves = 0;            // Number of successful jsys_execves
 //struct task_struct* last_task_struct_in_sigreturn = NULL;
 read_filename* read_filename_queue_front = NULL;
@@ -564,8 +562,10 @@ int new_profile(pH_profile* profile, const char* filename, bool make_temp_profil
 	ASSERT(profile != NULL);
 
 	// Increments profiles_created, and stores it as the identifier
+	spin_lock(&profiles_created_lock);
 	profiles_created++;
 	profile->identifier = profiles_created;
+	spin_lock(&profiles_created_lock);
 	profile->is_temp_profile = make_temp_profile;
 
 	profile->normal = 0; // We just started - not normal yet!
@@ -1844,6 +1844,7 @@ static int __init ebbchar_init(void) {
 	
 	spin_lock_init(&read_filename_queue_lock);
 	spin_lock_init(&task_struct_queue_lock);
+	spin_lock_init(&profiles_created_lock);
 	
 	pr_err("%s: Successfully initialized %s\n", DEVICE_NAME, DEVICE_NAME);
 	
@@ -1865,7 +1866,7 @@ failed_class_create:
 
 // Perhaps the best way to remove the module is just to reboot?
 static void __exit ebbchar_exit(void){
-	int i, profiles_freed, pH_task_structs_freed;
+	int pH_task_structs_freed;
 	
 	// Set all booleans accordingly - this should be the first thing you do to prevent any more code
 	// from running
@@ -1917,7 +1918,7 @@ static void __exit ebbchar_exit(void){
 	
 	// Print lengths of lists - can't print everything until I add pH_profile_list_length() back
 	//pr_err("%s: At time of module removal, pH was monitoring %d processes and had %d profiles in memory\n", DEVICE_NAME, pH_task_structs_freed, profiles_freed);
-	pr_err("%s: During the uptime of the module, %d profiles were created\n", DEVICE_NAME, profiles_created);
+	pr_err("%s: During the uptime of the module, %ld profiles were created\n", DEVICE_NAME, profiles_created);
 	pr_err("%s: During the uptime of the module, there were %d successful jsys_execves\n", DEVICE_NAME, successful_jsys_execves);
 	
 	pr_err("%s: %s successfully removed\n", DEVICE_NAME, DEVICE_NAME);
