@@ -1200,7 +1200,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	pH_task_struct* process = NULL;
 	pH_profile* profile = NULL;
 	task_struct_wrapper* to_add = NULL;
-	char* temp_string = NULL;
 	
 	if (!module_inserted_successfully) return 0;
 	
@@ -1212,9 +1211,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (ret < 0) {
 		pr_err("%s: Failed to send SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
 		pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
-		spin_lock(&read_filename_queue_lock);
-		remove_from_read_filename_queue();
-		spin_unlock(&read_filename_queue_lock);
 		return ret;
 	}
 	pr_err("%s: Sent SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
@@ -1223,9 +1219,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (to_add == NULL) {
 		pr_err("%s: Failed to allocate memory for to_add in sys_execve_return_handler\n", DEVICE_NAME);
 		ret = -ENOMEM;
-		spin_lock(&read_filename_queue_lock);
-		remove_from_read_filename_queue();
-		spin_unlock(&read_filename_queue_lock);
 		goto only_continue_process;
 	}
 	to_add->task_struct = current;
@@ -1234,12 +1227,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	add_to_task_struct_queue(to_add);
 	spin_unlock(&task_struct_queue_lock);
 	
-	/*
-	spin_lock(&read_filename_queue_lock);
-	remove_from_read_filename_queue();
-	spin_unlock(&read_filename_queue_lock);
-	*/
-	
 	spin_lock(&pH_task_struct_list_sem);
 	process = llist_retrieve_process(process_id);
 	spin_unlock(&pH_task_struct_list_sem);
@@ -1247,9 +1234,6 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (!process || process == NULL) {
 		pr_err("%s: No matching process\n", DEVICE_NAME);
 		ret = -1;
-		spin_lock(&read_filename_queue_lock);
-		remove_from_read_filename_queue();
-		spin_unlock(&read_filename_queue_lock);
 		spin_lock(&task_struct_queue_lock);
 		remove_from_task_struct_queue();
 		spin_unlock(&task_struct_queue_lock);
@@ -1263,48 +1247,14 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 		if (!profile) {
 			pr_err("%s: Unable to allocate memory for profile in sys_execve_return_handler\n", DEVICE_NAME);
 			ret = -ENOMEM;
-			spin_lock(&read_filename_queue_lock);
-			remove_from_read_filename_queue();
-			spin_unlock(&read_filename_queue_lock);
 			spin_lock(&task_struct_queue_lock);
 			remove_from_task_struct_queue();
 			spin_unlock(&task_struct_queue_lock);
 			goto only_continue_process;
 		}
 		
-		temp_string = kmalloc(PH_MAX_DISK_FILENAME, GFP_ATOMIC);
-		if (!temp_string || temp_string == NULL) {
-			pr_err("%s: Unable to allocate memory for profile in sys_execve_return_handler\n", DEVICE_NAME);
-			kfree(profile);
-			profile = NULL;
-			ret = -ENOMEM;
-			spin_lock(&read_filename_queue_lock);
-			remove_from_read_filename_queue();
-			spin_unlock(&read_filename_queue_lock);
-			spin_lock(&task_struct_queue_lock);
-			remove_from_task_struct_queue();
-			spin_unlock(&task_struct_queue_lock);
-			goto only_continue_process;
-		}
-		
-		spin_lock(&read_filename_queue_lock);
-		sprintf(temp_string, "%s", peek_read_filename_queue()); // Maybe not the right function to call
-		remove_from_read_filename_queue();
-		spin_unlock(&read_filename_queue_lock);
-		
-		ASSERT(passes_filename_test(temp_string));
-		new_profile(profile, temp_string, TRUE);
-		ASSERT(passes_filename_test(temp_string));
-		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, temp_string);
-		ASSERT(passes_filename_test(temp_string));
-		kfree(temp_string);
-		temp_string = NULL;
-		
-		/*
-		spin_lock(&read_filename_queue_lock);
-		remove_from_read_filename_queue();
-		spin_unlock(&read_filename_queue_lock);
-		*/
+		new_profile(profile, process->filename, TRUE);
+		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, process->filename);
 		
 		if (!profile || profile == NULL) {
 			pr_err("%s: new_profile() made a corrupted or NULL profile\n", DEVICE_NAME);
