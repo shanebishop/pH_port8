@@ -534,6 +534,7 @@ int pH_write_profile(pH_profile* profile) {
 	//ASSERT(strlen(temp_profile->filename) > 1);
 	//ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
 	
+	pH_refcount_init(profile, 0);
 	pr_err("%s: Calling pH_free_profile in pH_write_profile...\n", DEVICE_NAME);
 	pH_free_profile(temp_profile);
 	pr_err("%s: Back in pH_write_profile after pH_free_profile\n", DEVICE_NAME);
