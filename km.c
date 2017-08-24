@@ -477,6 +477,59 @@ inline struct task_struct* peek_task_struct_queue(void) {
 	return task_struct_queue_front->task_struct;
 }
 
+void pH_profile_mem2disk(pH_profile*, pH_disk_profile*);
+int pH_profile_disk2mem(pH_disk_profile*, pH_profile*);
+void pH_free_profile(pH_profile*);
+
+int pH_write_profile(pH_profile* profile) {
+	pH_disk_profile* disk_profile = NULL;
+	pH_profile* temp_profile = NULL;
+	
+	ASSERT(profile != NULL);
+	
+	temp_profile = __vmalloc(sizeof(pH_profile), GFP_ATOMIC, PAGE_KERNEL);
+	if (!temp_profile) {
+		pr_err("%s: Unable to allocate memory for temp_profile\n", DEVICE_NAME);
+		return -ENOMEM;
+	}
+	
+	disk_profile = __vmalloc(sizeof(pH_disk_profile), GFP_ATOMIC, PAGE_KERNEL);
+	if (!disk_profile) {
+		pr_err("%s: Unable to allocate memory for disk_profile\n", DEVICE_NAME);
+		kfree(temp_profile);
+		temp_profile = NULL;
+		return -ENOMEM;
+	}
+	
+	pH_profile_mem2disk(profile, disk_profile);
+	
+	ASSERT(profile->normal == disk_profile->normal);
+	ASSERT(profile->frozen == disk_profile->frozen);
+	ASSERT(profile->normal_time == disk_profile->normal_time);
+	ASSERT(profile->length == disk_profile->length);
+	ASSERT(profile->count == disk_profile->count);
+	ASSERT(profile->anomalies == disk_profile->anomalies);
+	ASSERT(strcmp(profile->filename, disk_profile->filename) == 0);
+	
+	pH_profile_disk2mem(disk_profile, temp_profile);
+	
+	vfree(disk_profile);
+	disk_profile = NULL;
+	
+	ASSERT(profile->normal == temp_profile->normal);
+	ASSERT(profile->frozen == temp_profile->frozen);
+	ASSERT(profile->normal_time == temp_profile->normal_time);
+	ASSERT(profile->length == temp_profile->length);
+	ASSERT(profile->count == temp_profile->count);
+	ASSERT(profile->anomalies == temp_profile->anomalies);
+	ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
+	
+	pH_free_profile(temp_profile);
+	temp_profile = NULL;
+	
+	return 0;
+}
+
 // Makes a new pH_profile and stores it in profile
 // profile must be allocated before this function is called
 int new_profile(pH_profile* profile, const char* filename, bool make_temp_profile) {
@@ -552,6 +605,8 @@ int new_profile(pH_profile* profile, const char* filename, bool make_temp_profil
 	}
 	
 	//pr_err("%s: Made new profile with filename [%s]\n", DEVICE_NAME, filename);
+	
+	pH_write_profile(profile);
 
 	return 0;
 }
@@ -2082,6 +2137,92 @@ inline void pH_train(pH_task_struct *s)
                 //profile->normal_time = xtime.tv_sec + pH_normal_wait;
         }
     }
+}
+
+void pH_profile_data_mem2disk(pH_profile_data *mem, pH_disk_profile_data *disk)
+{
+    //int i, j;
+
+    disk->sequences = mem->sequences;
+    disk->last_mod_count = mem->last_mod_count;
+    disk->train_count = mem->train_count;
+
+	/*
+    for (i = 0; i < PH_NUM_SYSCALLS; i++) {
+            if (mem->entry[i] == NULL) {
+                    disk->empty[i] = 1;
+                    for (j = 0; j < PH_NUM_SYSCALLS; j++) {
+                            disk->entry[i][j] = 0;
+                    }
+            } else {
+                    disk->empty[i] = 0;
+                    //memcpy(disk->entry[i], mem->entry[i], PH_NUM_SYSCALLS);
+            }
+    }
+    */
+}
+
+// I will eventually want to uncomment the commented lines below and run them without
+// any issues
+void pH_profile_mem2disk(pH_profile *profile, pH_disk_profile *disk_profile)
+{
+    /* make sure magic is less than PH_FILE_MAGIC_LEN! */
+    strlcpy(disk_profile->magic, PH_FILE_MAGIC, strlen(PH_FILE_MAGIC)+1);
+    disk_profile->normal = profile->normal;
+	pr_err("%s: original normal is %d\n", DEVICE_NAME, profile->normal);
+    disk_profile->frozen = profile->frozen;
+    pr_err("%s: original frozen is %d\n", DEVICE_NAME, profile->frozen);
+    disk_profile->normal_time = profile->normal_time;
+    disk_profile->length = profile->length;
+    pr_err("%s: original length is %d\n", DEVICE_NAME, profile->length);
+    disk_profile->count = profile->count;
+    disk_profile->anomalies = profile->anomalies;
+    pr_err("%s: original anomalies is %d\n", DEVICE_NAME, profile->anomalies);
+    strncpy(disk_profile->filename, profile->filename, PH_MAX_DISK_FILENAME);
+
+    //pH_profile_data_mem2disk(&(profile->train), &(disk_profile->train));
+    //pH_profile_data_mem2disk(&(profile->test), &(disk_profile->test));
+}
+
+int pH_profile_data_disk2mem(pH_disk_profile_data *disk, pH_profile_data *mem)
+{
+    int i;
+
+    mem->sequences = disk->sequences;
+    mem->last_mod_count = disk->last_mod_count;
+    mem->train_count = disk->train_count;
+
+    for (i = 0; i < PH_NUM_SYSCALLS; i++) {
+        if (disk->empty[i]) {
+            mem->entry[i] = NULL;
+        } else {
+            if (pH_add_seq_storage(mem, i))
+                return -1;
+            memcpy(mem->entry[i], disk->entry[i], PH_NUM_SYSCALLS);
+        }
+    }
+    
+    return 0;
+}
+
+int pH_profile_disk2mem(pH_disk_profile *disk_profile, pH_profile *profile)
+{
+    profile->normal = disk_profile->normal;
+    profile->frozen = disk_profile->frozen;
+    profile->normal_time = disk_profile->normal_time;
+    profile->length = disk_profile->length;
+    profile->count = disk_profile->count;
+    profile->anomalies = disk_profile->anomalies;
+
+    if (pH_profile_data_disk2mem(&(disk_profile->train),
+                                 &(profile->train)))
+        return -1;
+
+    if (pH_profile_data_disk2mem(&(disk_profile->test),
+                                 &(profile->test)))
+        return -1;
+
+    return 0;
 }
 
 module_init(ebbchar_init);
