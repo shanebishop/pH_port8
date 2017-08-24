@@ -1327,9 +1327,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	ASSERT(strcmp(process->filename, peek_read_filename_queue()) == 0);
 	remove_from_read_filename_queue();
 	ASSERT(read_filename_queue_front == NULL);
-	ASSERT(read_filename_queue_front->next == NULL);
 	ASSERT(read_filename_queue_rear == NULL);
-	ASSERT(read_filename_queue_rear->next == NULL);
 	spin_unlock(&read_filename_queue_lock);
 	
 	spin_unlock(&(process->lock));
