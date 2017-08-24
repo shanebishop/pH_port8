@@ -526,13 +526,13 @@ int pH_write_profile(pH_profile* profile) {
 	ASSERT(profile->length == temp_profile->length);
 	ASSERT(profile->count == temp_profile->count);
 	ASSERT(profile->anomalies == temp_profile->anomalies);
-	ASSERT(profile->filename != NULL);
-	ASSERT(profile->filename[0] != '\0');
-	pr_err("%s: Printing the filenames:\n", DEVICE_NAME);
-	pr_err("%s: Original profile's filename is [%s]\n", DEVICE_NAME, profile->filename);
-	pr_err("%s: New profile's filename is [%s]\n", DEVICE_NAME, temp_profile->filename);
-	ASSERT(strlen(profile->filename) > 1);
-	ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
+	//ASSERT(temp_profile->filename != NULL);
+	//ASSERT(temp_profile->filename[0] != '\0');
+	//pr_err("%s: Printing the filenames:\n", DEVICE_NAME);
+	//pr_err("%s: Original profile's filename is [%s]\n", DEVICE_NAME, profile->filename);
+	//pr_err("%s: New profile's filename is [%s]\n", DEVICE_NAME, temp_profile->filename);
+	//ASSERT(strlen(temp_profile->filename) > 1);
+	//ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
 	
 	pr_err("%s: Calling pH_free_profile in pH_write_profile...\n", DEVICE_NAME);
 	pH_free_profile(temp_profile);
@@ -2191,6 +2191,11 @@ void pH_profile_mem2disk(pH_profile *profile, pH_disk_profile *disk_profile)
     disk_profile->anomalies = profile->anomalies;
     pr_err("%s: original anomalies is %d\n", DEVICE_NAME, profile->anomalies);
     strncpy(disk_profile->filename, profile->filename, PH_MAX_DISK_FILENAME);
+    ASSERT(disk_profile->filename != NULL);
+    ASSERT(disk_profile->filename[0] != '\0');
+    ASSERT(strlen(disk_profile->filename) > 1);
+    ASSERT(strlen(disk_profile->filename) == strlen(profile->filename));
+    ASSERT(strcmp(disk_profile->filename, profile->filename) == 0);
     pr_err("%s: Successfully copied profile->filename\n", DEVICE_NAME);
 
     //pH_profile_data_mem2disk(&(profile->train), &(disk_profile->train));
@@ -2218,6 +2223,7 @@ int pH_profile_data_disk2mem(pH_disk_profile_data *disk, pH_profile_data *mem)
     return 0;
 }
 
+// **NOTE**: Does not copy over the filename
 int pH_profile_disk2mem(pH_disk_profile *disk_profile, pH_profile *profile)
 {
     profile->normal = disk_profile->normal;
