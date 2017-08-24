@@ -323,6 +323,15 @@ inline void pH_refcount_init(pH_profile *profile, int i)
         atomic_set(&(profile->refcount), i);
 }
 
+bool passes_filename_test(const char* filename) {
+	ASSERT(filename != NULL);
+	ASSERT(*filename == '~' || *filename == '.' || *filename == '/');
+	ASSERT(strlen(filename) > 1);
+	
+	return !(!filename || filename == NULL || strlen(filename) < 1 || 
+		!(*filename == '~' || *filename == '.' || *filename == '/'));
+}
+
 // Adds an alloc'd profile to the profile list
 void add_to_profile_llist(pH_profile* p) {
 	pH_refcount_inc(p);
@@ -1188,7 +1197,7 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	pH_task_struct* process = NULL;
 	pH_profile* profile = NULL;
 	task_struct_wrapper* to_add = NULL;
-	const char* temp_string = NULL;
+	char* temp_string = NULL;
 	
 	if (!module_inserted_successfully) return 0;
 	
@@ -1248,21 +1257,42 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 			goto only_continue_process;
 		}
 		
+		temp_string = kmalloc(PH_MAX_DISK_FILENAME, GFP_ATOMIC);
+		if (!temp_string || temp_string == NULL) {
+			pr_err("%s: Unable to allocate memory for profile in sys_execve_return_handler\n", DEVICE_NAME);
+			kfree(profile);
+			profile = NULL;
+			ret = -ENOMEM;
+			spin_lock(&task_struct_queue_lock);
+			remove_from_task_struct_queue();
+			spin_unlock(&task_struct_queue_lock);
+			goto only_continue_process;
+		}
+		
 		spin_lock(&read_filename_queue_lock);
-		temp_string = peek_read_filename_queue();
+		sprintf(temp_string, "%s", peek_read_filename_queue()); // Maybe not the right function to call
+		remove_from_read_filename_queue();
 		spin_unlock(&read_filename_queue_lock);
 		
+		ASSERT(passes_filename_test(temp_string));
 		new_profile(profile, temp_string, TRUE);
+		ASSERT(passes_filename_test(temp_string));
 		pr_err("%s: Made new profile for [%s]\n", DEVICE_NAME, temp_string);
+		ASSERT(passes_filename_test(temp_string));
+		kfree(temp_string);
 		temp_string = NULL;
 		
+		/*
 		spin_lock(&read_filename_queue_lock);
 		remove_from_read_filename_queue();
 		spin_unlock(&read_filename_queue_lock);
+		*/
 		
 		if (!profile || profile == NULL) {
 			pr_err("%s: new_profile() made a corrupted or NULL profile\n", DEVICE_NAME);
 			ASSERT(profile != NULL);
+			kfree(profile);
+			profile = NULL;
 			ret = -1;
 			spin_lock(&task_struct_queue_lock);
 			remove_from_task_struct_queue();
