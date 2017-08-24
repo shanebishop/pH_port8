@@ -1209,6 +1209,9 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (ret < 0) {
 		pr_err("%s: Failed to send SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
 		pr_err("%s: Leaving sys_execve_return_handler...\n", DEVICE_NAME);
+		spin_lock(&read_filename_queue_lock);
+		remove_from_read_filename_queue();
+		spin_unlock(&read_filename_queue_lock);
 		return ret;
 	}
 	pr_err("%s: Sent SIGSTOP signal to %d\n", DEVICE_NAME, process_id);
@@ -1217,6 +1220,9 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (to_add == NULL) {
 		pr_err("%s: Failed to allocate memory for to_add in sys_execve_return_handler\n", DEVICE_NAME);
 		ret = -ENOMEM;
+		spin_lock(&read_filename_queue_lock);
+		remove_from_read_filename_queue();
+		spin_unlock(&read_filename_queue_lock);
 		goto only_continue_process;
 	}
 	to_add->task_struct = current;
@@ -1238,6 +1244,9 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 	if (!process || process == NULL) {
 		pr_err("%s: No matching process\n", DEVICE_NAME);
 		ret = -1;
+		spin_lock(&read_filename_queue_lock);
+		remove_from_read_filename_queue();
+		spin_unlock(&read_filename_queue_lock);
 		spin_lock(&task_struct_queue_lock);
 		remove_from_task_struct_queue();
 		spin_unlock(&task_struct_queue_lock);
@@ -1251,6 +1260,9 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 		if (!profile) {
 			pr_err("%s: Unable to allocate memory for profile in sys_execve_return_handler\n", DEVICE_NAME);
 			ret = -ENOMEM;
+			spin_lock(&read_filename_queue_lock);
+			remove_from_read_filename_queue();
+			spin_unlock(&read_filename_queue_lock);
 			spin_lock(&task_struct_queue_lock);
 			remove_from_task_struct_queue();
 			spin_unlock(&task_struct_queue_lock);
@@ -1263,6 +1275,9 @@ static int sys_execve_return_handler(struct kretprobe_instance* ri, struct pt_re
 			kfree(profile);
 			profile = NULL;
 			ret = -ENOMEM;
+			spin_lock(&read_filename_queue_lock);
+			remove_from_read_filename_queue();
+			spin_unlock(&read_filename_queue_lock);
 			spin_lock(&task_struct_queue_lock);
 			remove_from_task_struct_queue();
 			spin_unlock(&task_struct_queue_lock);
