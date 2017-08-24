@@ -194,6 +194,7 @@ typedef struct pH_task_struct { // My own version of a pH_task_state
 	struct task_struct* task_struct; // Pointer to corresponding task_struct
 	struct pid* pid; // Pointer to corresponding struct pid
 	spinlock_t lock;
+	char* filename;
 } pH_task_struct;
 
 typedef struct read_filename {
@@ -1088,6 +1089,13 @@ static long jsys_execve(const char __user *filename,
 	process->count = 0;
 	//pr_err("%s: Initialized process\n", DEVICE_NAME);
 	
+	process->filename = kmalloc(sizeof(char) * 4000, GFP_ATOMIC);
+	if (process->filename == NULL) {
+		pr_err("%s: Unable to allocate memory for process->filename\n", DEVICE_NAME);
+		goto exit;
+	}
+	strlcpy(process->filename, path_to_binary, strlen(path_to_binary)+1);
+	
 	// Grab the profile from memory - if this fails, I would want to do a read, but since I am not
 	// implementing that right now, then make a new profile
 	//pr_err("%s: Attempting to retrieve profile...\n", DEVICE_NAME);
@@ -1561,6 +1569,9 @@ void free_pH_task_struct(pH_task_struct* process) {
 	if (pH_aremonitoring) {
 		//stack_print(process);
 	}
+	
+	kfree(process->filename);
+	process->filename = NULL;
 	
 	/* // Commented out since I'm not using stacks
 	// Emtpies stack of pH_seqs
