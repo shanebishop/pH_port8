@@ -492,6 +492,7 @@ int pH_write_profile(pH_profile* profile) {
 		pr_err("%s: Unable to allocate memory for temp_profile\n", DEVICE_NAME);
 		return -ENOMEM;
 	}
+	temp_profile->lock = NULL;
 	
 	disk_profile = __vmalloc(sizeof(pH_disk_profile), GFP_ATOMIC, PAGE_KERNEL);
 	if (!disk_profile) {
