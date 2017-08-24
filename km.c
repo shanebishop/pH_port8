@@ -455,6 +455,7 @@ noinline void remove_from_read_filename_queue(void) {
 	
 	to_return = read_filename_queue_front;
 	read_filename_queue_front = read_filename_queue_front->next;
+	if (read_filename_queue_front == NULL) read_filename_queue_rear = NULL;
 	kfree(to_return->filename);
 	to_return->filename = NULL;
 	kfree(to_return);
