@@ -501,7 +501,9 @@ int pH_write_profile(pH_profile* profile) {
 		return -ENOMEM;
 	}
 	
+	pr_err("%s: Copying from mem to disk in pH_write_profile...\n", DEVICE_NAME);
 	pH_profile_mem2disk(profile, disk_profile);
+	pr_err("%s: Back from mem to disk in pH_write_profile\n", DEVICE_NAME);
 	
 	ASSERT(profile->normal == disk_profile->normal);
 	ASSERT(profile->frozen == disk_profile->frozen);
@@ -511,7 +513,9 @@ int pH_write_profile(pH_profile* profile) {
 	ASSERT(profile->anomalies == disk_profile->anomalies);
 	ASSERT(strcmp(profile->filename, disk_profile->filename) == 0);
 	
+	pr_err("%s: Copying from disk to mem in pH_write_profile...\n", DEVICE_NAME);
 	pH_profile_disk2mem(disk_profile, temp_profile);
+	pr_err("%s: Back from disk to mem in pH_write_profile\n", DEVICE_NAME);
 	
 	vfree(disk_profile);
 	disk_profile = NULL;
@@ -524,7 +528,9 @@ int pH_write_profile(pH_profile* profile) {
 	ASSERT(profile->anomalies == temp_profile->anomalies);
 	ASSERT(strcmp(profile->filename, temp_profile->filename) == 0);
 	
+	pr_err("%s: Calling pH_free_profile in pH_write_profile...\n", DEVICE_NAME);
 	pH_free_profile(temp_profile);
+	pr_err("%s: Back in pH_write_profile after pH_free_profile\n", DEVICE_NAME);
 	temp_profile = NULL;
 	
 	return 0;
@@ -2179,6 +2185,7 @@ void pH_profile_mem2disk(pH_profile *profile, pH_disk_profile *disk_profile)
     disk_profile->anomalies = profile->anomalies;
     pr_err("%s: original anomalies is %d\n", DEVICE_NAME, profile->anomalies);
     strncpy(disk_profile->filename, profile->filename, PH_MAX_DISK_FILENAME);
+    pr_err("%s: Successfully copied profile->filename\n", DEVICE_NAME);
 
     //pH_profile_data_mem2disk(&(profile->train), &(disk_profile->train));
     //pH_profile_data_mem2disk(&(profile->test), &(disk_profile->test));
