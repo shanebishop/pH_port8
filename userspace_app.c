@@ -11,6 +11,10 @@
 #include "ebbcharmutex.h"
 #include "linkedlist.h"
 
+#define SEND_DATA 1
+#define RETRIEVE_DATA 2
+#define PATH_MAX 4096
+#define BUFFER_LENGTH 256 // The buffer length
 static char receive[BUFFER_LENGTH]; // The receive buffer for the LKM
 volatile sig_atomic_t terminated = 0;
 void* bin_receive;

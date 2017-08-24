@@ -6,6 +6,7 @@ Currently used signums - 0 through 383
 
 #include <linux/aio_abi.h>
 
+/*
 // Grab syscalls
 #ifdef __i386__
 #define __SYSCALL_I386(nr, sym, qual) [nr] = 1,
@@ -18,6 +19,7 @@ static char syscalls[] = {
 #include <asm/syscalls_64.h>
 };
 #endif
+*/
 
 // process_syscall prototype
 int process_syscall(long);

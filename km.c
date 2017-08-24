@@ -32,14 +32,11 @@ error message (code should ONLY stop running on ASSERT or rmmod)
 MODULE_LICENSE("GPL"); // Don't ever forget this line!
 
 // Anil's definitions
-//#define PH_NUM_SYSCALLS 256 // Size of array
-#define PH_NUM_SYSCALLS num_syscalls // Size of array
 #define PH_COUNT_PAGE_MAX (PAGE_SIZE / PH_NUM_SYSCALLS)
 #define PH_MAX_PAGES (PH_NUM_SYSCALLS / PH_COUNT_PAGE_MAX)
 #define PH_MAX_SEQLEN 9
 #define PH_MAX_DISK_FILENAME 256
 #define PH_LOCALITY_WIN 128
-#define PH_FILE_MAGIC_LEN 20
 #define PH_EMPTY_SYSCALL 255 // Note: This value is used as the "no system call" marker in sequences"
 
 #define PH_LOG_ERR 1      /* real errors */
@@ -83,8 +80,16 @@ do {    if (x) break;                                                   \
 } while (0)
 
 static int    majorNumber;
+//static char	message[256] = {0};
+//static short	size_of_message;
+static int	numberOpens = 0;
+static struct class*	ebbcharClass = NULL;
+static struct device*	ebbcharDevice = NULL;
+//char*         test_string = "If this string is returned, that is awesome!!!";
 
 const char *PH_FILE_MAGIC = "pH profile 0.18\n";
+
+static DEFINE_MUTEX(ebbchar_mutex);	    // Macro to declare a new mutex
 
 static int     dev_open(struct inode *, struct file *);
 static int     dev_release(struct inode *, struct file *);
@@ -316,7 +321,8 @@ inline void pH_refcount_dec(pH_profile *profile)
 // Perhaps this should call atomic_set rather than directly changing the value
 inline void pH_refcount_init(pH_profile *profile, int i)
 {
-        profile->refcount.counter = i;
+        //profile->refcount.counter = i; // Old implementation
+        atomic_set(&(profile->refcount), i);
 }
 
 // Adds an alloc'd profile to the profile list
@@ -377,6 +383,9 @@ noinline const char* peek_read_filename_queue(void) {
 // but the error actually happened in __kmalloc after a call to printk, so the problem may not stem
 // from this function but rather from somewhere else
 noinline void add_to_read_filename_queue(const char* filename) {
+	read_filename* to_add = NULL;
+	char* save_filename = NULL;
+	
 	ASSERT(spin_is_locked(&read_filename_queue_lock));
 	ASSERT(filename != NULL);
 	ASSERT(strlen(filename) > 1);
@@ -384,14 +393,14 @@ noinline void add_to_read_filename_queue(const char* filename) {
 		!(*filename == '~' || *filename == '.' || *filename == '/')));
 	
 	pr_err("%s: In add_to_read_filename_queue\n", DEVICE_NAME);
-	read_filename* to_add = kmalloc(sizeof(read_filename), GFP_ATOMIC);
+	to_add = kmalloc(sizeof(read_filename), GFP_ATOMIC);
 	if (!to_add || to_add == NULL) {
 		pr_err("%s: Out of memory in add_to_read_filename\n", DEVICE_NAME);
 		return;
 	}
 	pr_err("%s: Allocated memory for to_add\n", DEVICE_NAME);
 	
-	char* save_filename = kmalloc(strlen(filename)+1, GFP_ATOMIC);
+	save_filename = kmalloc(strlen(filename)+1, GFP_ATOMIC);
 	if (!save_filename || save_filename == NULL) {
 		pr_err("%s: Out of memory in add_to_read_filename\n", DEVICE_NAME);
 		return;
@@ -430,7 +439,7 @@ noinline void add_to_read_filename_queue(const char* filename) {
 }
 
 noinline void remove_from_read_filename_queue(void) {
-	read_filename* to_return;
+	read_filename* to_return = NULL;
 	
 	ASSERT(spin_is_locked(&read_filename_queue_lock));
 	
@@ -462,10 +471,12 @@ void add_to_task_struct_queue(task_struct_wrapper* t) {
 }
 
 void remove_from_task_struct_queue(void) {
+	task_struct_wrapper* to_remove = NULL;
+	
 	ASSERT(spin_is_locked(&task_struct_queue_lock));
 	ASSERT(task_struct_queue_front != NULL);
 	
-	task_struct_wrapper* to_remove = task_struct_queue_front;
+	to_remove = task_struct_queue_front;
 	task_struct_queue_front = task_struct_queue_front->next;
 	kfree(to_remove);
 	to_remove = NULL;
@@ -925,10 +936,11 @@ void add_process_to_llist(pH_task_struct* t) {
 
 // Returns a pH_profile, given a filename
 pH_profile* retrieve_pH_profile_by_filename(const char* filename) {
-	ASSERT(spin_is_locked(&pH_profile_list_sem));
+	pH_profile* profile_list_iterator = NULL;
 	
-	pH_task_struct* process_list_iterator;
-	pH_profile* profile_list_iterator = pH_profile_list;
+	ASSERT(spin_is_locked(&pH_profile_list_sem));
+
+	profile_list_iterator = pH_profile_list;
 	
 	if (pH_profile_list == NULL) {
 		pr_err("%s: pH_profile_list is NULL\n", DEVICE_NAME);
@@ -961,7 +973,7 @@ static long jsys_execve(const char __user *filename,
 {
 	char* path_to_binary = NULL;
 	int current_process_id;
-	int list_length;
+	//int list_length;
 	pH_task_struct* process = NULL;
 	pH_profile* profile = NULL;
 	bool already_had_process = FALSE;
@@ -1360,7 +1372,7 @@ int pH_remove_profile_from_list(pH_profile *profile)
     }
 }
 
-// Destructor for pH_profiles - perhaps remove use of freeing lock?
+// Destructor for pH_profiles
 void pH_free_profile(pH_profile *profile)
 {
     int ret = 0;
@@ -1470,8 +1482,8 @@ int remove_process_from_llist(pH_task_struct* process) {
 
 // Destructor for pH_task_structs
 void free_pH_task_struct(pH_task_struct* process) {
-	pH_profile* profile = NULL;
-	int i = 0;
+	//pH_profile* profile = NULL;
+	//int i = 0;
 	int ret;
 	
 	ASSERT(process != NULL);
