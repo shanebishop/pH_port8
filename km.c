@@ -281,7 +281,7 @@ bool user_process_has_been_loaded = FALSE;
 bool module_inserted_successfully = FALSE;
 spinlock_t pH_profile_list_sem;             // Lock for list of profiles
 spinlock_t pH_task_struct_list_sem;         // Lock for process list
-long profiles_created = 0;                  // Number of profiles that have been created
+int profiles_created = 0;                   // Number of profiles that have been created
 spinlock_t profiles_created_lock;
 int successful_jsys_execves = 0;            // Number of successful jsys_execves
 //struct task_struct* last_task_struct_in_sigreturn = NULL;
@@ -504,10 +504,21 @@ int pH_write_profile(pH_profile* profile) {
 	temp_profile->lock = NULL;
 	temp_profile->is_temp_profile = TRUE;
 	
+	temp_profile->filename = kmalloc(strlen(profile->filename)+1, GFP_ATOMIC);
+	if (temp_profile->filename == NULL) {
+		pr_err("%s: Unable to allocate memory for disk_profile\n", DEVICE_NAME);
+		vfree(temp_profile);
+		temp_profile = NULL;
+		return -ENOMEM;
+	}
+	strlcpy(temp_profile->filename, profile->filename, strlen(profile->filename)+1);
+	
 	disk_profile = __vmalloc(sizeof(pH_disk_profile), GFP_ATOMIC, PAGE_KERNEL);
 	if (!disk_profile) {
 		pr_err("%s: Unable to allocate memory for disk_profile\n", DEVICE_NAME);
-		kfree(temp_profile);
+		kfree(temp_profile->filename);
+		temp_profile->filename = NULL;
+		vfree(temp_profile);
 		temp_profile = NULL;
 		return -ENOMEM;
 	}
@@ -1312,7 +1323,7 @@ void pH_free_profile_storage(pH_profile *profile)
     ASSERT(profile != NULL);
     ASSERT(!pH_profile_in_use(profile));
 
-	pr_err("%s: In pH_free_profile_storage for %d\n", DEVICE_NAME, profile->identifier);
+	pr_err("%s: In pH_free_profile_storage for [%s]\n", DEVICE_NAME, profile->filename);
 
 	// Free profile->filename
     kfree(profile->filename);
@@ -1918,7 +1929,7 @@ static void __exit ebbchar_exit(void) {
 	
 	// Print lengths of lists - can't print everything until I add pH_profile_list_length() back
 	//pr_err("%s: At time of module removal, pH was monitoring %d processes and had %d profiles in memory\n", DEVICE_NAME, pH_task_structs_freed, profiles_freed);
-	pr_err("%s: During the uptime of the module, %ld profiles were created\n", DEVICE_NAME, profiles_created);
+	pr_err("%s: During the uptime of the module, %d profiles were created\n", DEVICE_NAME, profiles_created);
 	pr_err("%s: During the uptime of the module, there were %d successful jsys_execves\n", DEVICE_NAME, successful_jsys_execves);
 	
 	pr_err("%s: %s successfully removed\n", DEVICE_NAME, DEVICE_NAME);
