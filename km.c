@@ -565,7 +565,7 @@ int new_profile(pH_profile* profile, const char* filename, bool make_temp_profil
 	spin_lock(&profiles_created_lock);
 	profiles_created++;
 	profile->identifier = profiles_created;
-	spin_lock(&profiles_created_lock);
+	spin_unlock(&profiles_created_lock);
 	profile->is_temp_profile = make_temp_profile;
 
 	profile->normal = 0; // We just started - not normal yet!
@@ -1865,7 +1865,7 @@ failed_class_create:
 }
 
 // Perhaps the best way to remove the module is just to reboot?
-static void __exit ebbchar_exit(void){
+static void __exit ebbchar_exit(void) {
 	int pH_task_structs_freed;
 	
 	// Set all booleans accordingly - this should be the first thing you do to prevent any more code
