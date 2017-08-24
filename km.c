@@ -487,6 +487,7 @@ void remove_from_task_struct_queue(void) {
 	
 	to_remove = task_struct_queue_front;
 	task_struct_queue_front = task_struct_queue_front->next;
+	if (task_struct_queue_front == NULL) task_struct_queue_front = NULL;
 	kfree(to_remove);
 	to_remove = NULL;
 }
